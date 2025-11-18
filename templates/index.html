@@ -1,0 +1,120 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Object Detection</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 16px; background: #fff; color:#111 }
+        .container { max-width: 900px; margin: 0 auto; }
+        img.stream { width: 100%; height: auto; border-radius: 8px; border: 1px solid #ddd; }
+        .stats { margin-top: 12px; padding: 12px; background: #f7f7f7; border-radius: 8px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+        .badge { background:#222; color:#fff; padding:6px 10px; border-radius:12px; font-size:14px; }
+        .counts { font-size:14px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Smart Object detection System</h2>
+        
+        <img class="stream" src="{{ url_for('video_feed') }}" />
+
+        <div class="stats">
+            <span id="fps" class="badge">0.0 FPS</span>
+            <div id="counts" class="counts">No detections</div>
+            <div id="lastAlert" style="margin-left:auto; font-size:13px; color:#666;"></div>
+        </div>
+
+        <p style="margin-top:12px; color:#444;">
+            Note: Uses the browser's speech (Web Speech API). Make sure your phone's browser supports speechSynthesis and that sound is enabled.
+        </p>
+    </div>
+
+    <script>
+        document.addEventListener('click', () => {
+    if ('speechSynthesis' in window) {
+        window.speechSynthesis.getVoices();
+    }
+}, { once: true });
+
+        let lastAlertTs = 0;
+        const cooldown = 3000; // ms
+        let lastSpeakTime = 0;
+
+        function supportsSpeech() {
+            return ('speechSynthesis' in window) && ('SpeechSynthesisUtterance' in window);
+        }
+
+        function speakText(text) {
+            if (!supportsSpeech()) {
+                console.log("Speech API not supported in this browser.");
+                return;
+            }
+            try {
+                const now = Date.now();
+                // small guard to avoid repeating too fast on flaky stats
+                if (now - lastSpeakTime < cooldown) return;
+                lastSpeakTime = now;
+
+                const utter = new SpeechSynthesisUtterance(text);
+                // optional: choose voice/lang if you want
+                utter.lang = 'en-US';
+                utter.rate = 1.0;
+                utter.pitch = 1.0;
+                window.speechSynthesis.cancel(); // stop any current speech
+                window.speechSynthesis.speak(utter);
+            } catch (e) {
+                console.log("Speak error:", e);
+            }
+        }
+
+        function formatCounts(counts) {
+            const entries = Object.entries(counts || {});
+            if (entries.length === 0) return "No detections";
+            return entries.map(([k, v]) => `${k}: ${v}`).join(" • ");
+        }
+
+        async function pollStats() {
+            try {
+                const res = await fetch('/stats', { cache: 'no-store' });
+                if (!res.ok) throw new Error('Network');
+                const data = await res.json();
+
+                document.getElementById('fps').textContent = (data.fps || 0).toFixed(1) + ' FPS';
+                document.getElementById('counts').textContent = formatCounts(data.counts || {});
+
+                // alert is: { message: "...", ts: epoch_seconds }
+                const alertObj = data.alert || { message: "", ts: 0 };
+                // convert ts to ms
+                const alertTsMs = Math.floor((alertObj.ts || 0) * 1000);
+
+                if (alertObj.message && alertTsMs > lastAlertTs) {
+                    // new alert
+                    lastAlertTs = alertTsMs;
+                    document.getElementById('lastAlert').textContent = new Date(alertTsMs).toLocaleTimeString() + " — " + alertObj.message;
+
+                    // speak it if supported
+                    speakText(alertObj.message);
+                }
+
+            } catch (e) {
+                console.log("Stats error:", e);
+            } finally {
+                setTimeout(pollStats, 800); // poll ~every 0.8s
+            }
+        }
+
+        // warm up voices (some mobile browsers need a user gesture)
+        document.addEventListener('click', () => {
+            if (supportsSpeech()) {
+                // prefetch voices
+                window.speechSynthesis.getVoices();
+            }
+        }, { once: true });
+
+        pollStats();
+    </script>
+    
+</body>
+</html>
