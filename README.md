@@ -134,8 +134,16 @@ project/
 ```
 
 ---
+## 📸 Example Output
+
+Real-time detection running on the Flask web app:
+
+![Object Detection Demo](output.png)
+
 
 ## ✅ Ready to Use
 Just update the IP camera URL in `app.py`, run the Flask server, and start detecting in real time.
 
 Feel free to add images or GIFs later for better documentation.
+
+
